@@ -19,10 +19,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any
 
 from tqdm import tqdm
-from arag import LLMClient, BaseAgent, ToolRegistry, Config
+from arag import LLMClient, BaseAgent, MemoryAgent, ToolRegistry, Config, MemoryConfig
 from arag.tools.keyword_search import KeywordSearchTool
 from arag.tools.semantic_search import SemanticSearchTool
 from arag.tools.read_chunk import ReadChunkTool
+from arag.utils import get_context_for_dataset
 
 logging.basicConfig(level=logging.ERROR)
 
@@ -37,7 +38,8 @@ class BatchRunner:
         output_dir: str,
         limit: int = None,
         num_workers: int = 10,
-        verbose: bool = False
+        verbose: bool = False,
+        agent_type: str = "base"
     ):
         self.config = config
         self.questions_file = Path(questions_file)
@@ -46,6 +48,7 @@ class BatchRunner:
         self.limit = limit
         self.num_workers = num_workers
         self.verbose = verbose
+        self.agent_type = agent_type
         
         self.predictions_file = self.output_dir / "predictions.jsonl"
         self.write_lock = Lock()
@@ -59,6 +62,13 @@ class BatchRunner:
         prompt_file = Path(__file__).parent.parent / "src/arag/agent/prompts/default.txt"
         if prompt_file.exists():
             self._system_prompt = prompt_file.read_text()
+        
+        # For memory agent, pre-load context
+        self._context = None
+        if self.agent_type == "memory":
+            print(f"Loading context for Memory Agent...")
+            self._context = get_context_for_dataset(str(self.questions_file))
+            print(f"Context loaded: {len(self._context)} characters")
         else:
             self._system_prompt = "You are a helpful assistant."
     
@@ -132,15 +142,15 @@ class BatchRunner:
             print(f"Warning: Error loading completed data: {e}")
         
         return completed_qids
+    :
+        """Create agent instance based on agent_type."""
+        if self.agent_type == "memory":
+            return self._create_memory_agent()
+        else:
+            return self._create_base_agent()
     
-    def _append_prediction(self, prediction: Dict[str, Any]):
-        """Append prediction to file (thread-safe)."""
-        with self.write_lock:
-            with open(self.predictions_file, 'a', encoding='utf-8') as f:
-                f.write(json.dumps(prediction, ensure_ascii=False) + '\n')
-    
-    def _create_agent(self) -> BaseAgent:
-        """Create agent instance with shared tools."""
+    def _create_base_agent(self) -> BaseAgent:
+        """Create base agent instance with shared tools."""
         llm_config = self.config.get('llm', {})
         
         client = LLMClient(
@@ -151,6 +161,39 @@ class BatchRunner:
         )
         
         agent_config = self.config.get('agent', {})
+        
+        return BaseAgent(
+            llm_client=client,
+            tools=self._shared_tools,  # Use shared tools
+            system_prompt=self._system_prompt,
+            max_loops=agent_config.get('max_loops', 10),
+            max_token_budget=agent_config.get('max_token_budget', 128000),
+            verbose=self.verbose
+        )
+    
+    def _create_memory_agent(self) -> MemoryAgent:
+        """Create memory agent instance."""
+        llm_config = self.config.get('llm', {})
+        
+        client = LLMClient(
+            model=llm_config.get('model') or os.getenv('ARAG_MODEL', 'gpt-4o-mini'),
+            api_key=llm_config.get('api_key') or os.getenv('ARAG_API_KEY'),
+            base_url=llm_config.get('base_url') or os.getenv('ARAG_BASE_URL', 'https://api.openai.com/v1'),
+            reasoning_effort=llm_config.get('reasoning_effort')
+        )
+        
+        # Get memory config from config file or use defaults
+        memory_config_dict = self.config.get('memory', {})
+        memory_config = MemoryConfig(
+            chunk_size=memory_config_dict.get('chunk_size', 512),
+            max_memorization_length=memory_config_dict.get('max_memorization_length', 512),
+            max_final_response_length=memory_config_dict.get('max_final_response_length', 1024)
+        )
+        
+        return MemoryAgent(
+            llm_client=client,
+            context=self._context,
+            memory_config=memory_config
         
         return BaseAgent(
             llm_client=client,
@@ -211,18 +254,21 @@ class BatchRunner:
         # Filter pending questions
         pending = [q for q in self.questions 
                    if (q.get('qid') or q.get('id')) not in completed_qids]
-        
-        print(f"Total questions: {len(self.questions)}")
-        print(f"Completed: {len(completed_qids)}")
-        print(f"Pending: {len(pending)}")
-        
-        if not pending:
-            print("All questions completed!")
-            return
-        
-        print(f"Starting with {self.num_workers} workers...")
-        
-        with ThreadPoolExecutor(max_workers=self.num_workers) as executor:
+    parser.add_argument("--agent-type", choices=["base", "memory"], default="base", 
+                        help="Agent type: 'base' for tool-based A-RAG, 'memory' for Re-MEMR1")
+    
+    args = parser.parse_args()
+    
+    config = Config.from_yaml(args.config)
+    
+    runner = BatchRunner(
+        config=config,
+        questions_file=args.questions,
+        output_dir=args.output,
+        limit=args.limit,
+        num_workers=args.workers,
+        verbose=args.verbose,
+        agent_type=args.agent_typutor(max_workers=self.num_workers) as executor:
             futures = {}
             
             for item in pending:
