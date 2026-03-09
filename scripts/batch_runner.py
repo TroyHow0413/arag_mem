@@ -140,8 +140,15 @@ class BatchRunner:
                         continue
         except Exception as e:
             print(f"Warning: Error loading completed data: {e}")
-        
         return completed_qids
+    
+
+    def _append_prediction(self, prediction: Dict[str, Any]):
+        """Append prediction to file (thread-safe)."""
+        with self.write_lock:
+            with open(self.predictions_file, 'a', encoding='utf-8') as f:
+                f.write(json.dumps(prediction, ensure_ascii=False) + '\n')
+
     def _create_agent(self):
         """Create agent instance based on agent_type."""
         if self.agent_type == "memory":
@@ -193,17 +200,11 @@ class BatchRunner:
         return MemoryAgent(
             llm_client=client,
             context=self._context,
-            memory_config=memory_config
-        
-        return BaseAgent(
-            llm_client=client,
-            tools=self._shared_tools,  # Use shared tools
-            system_prompt=self._system_prompt,
-            max_loops=agent_config.get('max_loops', 10),
-            max_token_budget=agent_config.get('max_token_budget', 128000),
+            memory_config=memory_config,
             verbose=self.verbose
         )
-    
+
+        
     def _process_one(self, item: Dict[str, Any], agent: BaseAgent) -> Dict[str, Any]:
         """Process one question."""
         qid = item.get('qid') or item.get('id')
@@ -254,21 +255,18 @@ class BatchRunner:
         # Filter pending questions
         pending = [q for q in self.questions 
                    if (q.get('qid') or q.get('id')) not in completed_qids]
-    parser.add_argument("--agent-type", choices=["base", "memory"], default="base", 
-                        help="Agent type: 'base' for tool-based A-RAG, 'memory' for Re-MEMR1")
-    
-    args = parser.parse_args()
-    
-    config = Config.from_yaml(args.config)
-    
-    runner = BatchRunner(
-        config=config,
-        questions_file=args.questions,
-        output_dir=args.output,
-        limit=args.limit,
-        num_workers=args.workers,
-        verbose=args.verbose,
-        agent_type=args.agent_typutor(max_workers=self.num_workers) as executor:
+        
+        print(f"Total questions: {len(self.questions)}")
+        print(f"Completed: {len(completed_qids)}")
+        print(f"Pending: {len(pending)}")
+        
+        if not pending:
+            print("All questions completed!")
+            return
+        
+        print(f"Starting with {self.num_workers} workers...")
+        
+        with ThreadPoolExecutor(max_workers=self.num_workers) as executor:
             futures = {}
             
             for item in pending:
@@ -297,6 +295,8 @@ def main():
     parser.add_argument("--limit", "-l", type=int, default=None, help="Limit number of questions")
     parser.add_argument("--workers", "-w", type=int, default=10, help="Number of workers")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
+    parser.add_argument("--agent-type", choices=["base", "memory"], default="base",
+                        help="Agent type: 'base' for tool-based ARAG, 'memory' for Re-MEMR1")
     
     args = parser.parse_args()
     
@@ -308,7 +308,8 @@ def main():
         output_dir=args.output,
         limit=args.limit,
         num_workers=args.workers,
-        verbose=args.verbose
+        verbose=args.verbose,
+        agent_type=args.agent_type
     )
     
     runner.run()
