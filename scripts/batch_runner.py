@@ -142,7 +142,7 @@ class BatchRunner:
             print(f"Warning: Error loading completed data: {e}")
         
         return completed_qids
-    :
+    def _create_agent(self):
         """Create agent instance based on agent_type."""
         if self.agent_type == "memory":
             return self._create_memory_agent()
