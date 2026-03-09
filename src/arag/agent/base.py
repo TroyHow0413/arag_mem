@@ -30,6 +30,14 @@ class BaseAgent:
         self.verbose = verbose
         self.tokenizer = tiktoken.encoding_for_model("gpt-4o")
     
+    def _calculate_tool_usage(self, trajectory: List[Dict[str, Any]]) -> Dict[str, int]:
+        """Calculate tool usage summary from trajectory."""
+        tool_counts = {}
+        for entry in trajectory:
+            tool_name = entry.get("tool_name", "unknown")
+            tool_counts[tool_name] = tool_counts.get(tool_name, 0) + 1
+        return tool_counts
+    
     def _calculate_message_tokens(self, messages: List[Dict[str, Any]]) -> int:
         total = len(self.tokenizer.encode(self.system_prompt))
         for msg in messages:
@@ -93,12 +101,16 @@ class BaseAgent:
                     messages, context, total_cost, "Token budget exceeded"
                 )
                 
+                # Calculate tool usage summary
+                tool_usage_summary = self._calculate_tool_usage(trajectory)
+                
                 return {
                     "answer": final_answer,
                     "trajectory": trajectory,
                     "total_cost": total_cost,
                     "loops": loop_count,
                     "token_budget_exceeded": True,
+                    "tool_usage_summary": tool_usage_summary,
                     **context.get_summary()
                 }
             
@@ -123,11 +135,16 @@ class BaseAgent:
             if not tool_calls:
                 # No tool calls - agent is done
                 final_answer = message.get("content", "")
+                
+                # Calculate tool usage summary
+                tool_usage_summary = self._calculate_tool_usage(trajectory)
+                
                 return {
                     "answer": final_answer,
                     "trajectory": trajectory,
                     "total_cost": total_cost,
                     "loops": loop_count,
+                    "tool_usage_summary": tool_usage_summary,
                     **context.get_summary()
                 }
             
@@ -180,11 +197,15 @@ class BaseAgent:
             messages, context, total_cost, "Maximum loops exceeded"
         )
         
+        # Calculate tool usage summary
+        tool_usage_summary = self._calculate_tool_usage(trajectory)
+        
         return {
             "answer": final_answer,
             "trajectory": trajectory,
             "total_cost": total_cost,
             "loops": loop_count,
             "max_loops_exceeded": True,
+            "tool_usage_summary": tool_usage_summary,
             **context.get_summary()
         }

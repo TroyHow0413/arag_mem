@@ -87,7 +87,7 @@ python scripts/batch_runner.py \
     --questions data/musique/questions.json \
     --output results/musique_base \
     --agent-type base \
-    --limit 10 --workers 5
+    --limit 100 --workers 5
 ```
 
 ### 3. Run Memory Agent (Re-MEMR1)
@@ -97,7 +97,7 @@ python scripts/batch_runner.py \
     --questions data/musique/questions.json \
     --output results/musique_memory \
     --agent-type memory \
-    --limit 10 --workers 5
+    --limit 100 --workers 5
 ```
 
 ### 4. Evaluate & Compare

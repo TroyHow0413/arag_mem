@@ -43,7 +43,7 @@ uv run python scripts/batch_runner.py \
     --config configs/example.yaml \
     --questions data/musique/questions.json \
     --output results/musique \
-    --limit 10 --workers 5
+    --limit 100 --workers 5
 
 # 6. Evaluate results
 uv run python scripts/eval.py \

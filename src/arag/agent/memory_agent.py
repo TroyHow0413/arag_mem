@@ -56,6 +56,14 @@ class MemoryAgent:
         """Calculate number of tokens in text."""
         return len(self.tokenizer.encode(text))
     
+    def _calculate_tool_usage(self, trajectory: List[Dict[str, Any]]) -> Dict[str, int]:
+        """Calculate tool usage summary from trajectory."""
+        tool_counts = {}
+        for entry in trajectory:
+            tool_name = entry.get("tool_name", "unknown")
+            tool_counts[tool_name] = tool_counts.get(tool_name, 0) + 1
+        return tool_counts
+    
     def run(self, query: str) -> Dict[str, Any]:
         """
         Run memory-based agent on a query.
@@ -212,6 +220,9 @@ class MemoryAgent:
             "retrieved_tokens": final_input_tokens
         })
         
+        # Calculate tool usage summary
+        tool_usage_summary = self._calculate_tool_usage(trajectory)
+        
         # Format output to match BaseAgent
         return {
             "answer": final_answer,
@@ -219,6 +230,7 @@ class MemoryAgent:
             "total_cost": total_cost,
             "loops": len(chunks) + 1,
             "total_retrieved_tokens": total_tokens,
+            "tool_usage_summary": tool_usage_summary,
             "retrieval_logs": [
                 {
                     "tool_name": "memory_chunk_processing",
