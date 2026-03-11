@@ -11,6 +11,26 @@ import tiktoken
 class LLMClient:
     """Unified LLM client for OpenAI-compatible APIs."""
     
+    # Model name mappings for different providers
+    OPENROUTER_MODEL_MAP = {
+        # Qwen models
+        "qwen3.5-flash-02-23": "qwen/qwen3.5-flash-02-23",
+        "qwen-flash": "qwen/qwen-2.5-72b-instruct",
+        "qwen2.5": "qwen/qwen-2.5-72b-instruct",
+        # Claude models
+        "claude-4.5-sonnet": "anthropic/claude-3.5-sonnet",
+        "claude-sonnet": "anthropic/claude-3.5-sonnet",
+        "claude-haiku": "anthropic/claude-3-haiku",
+        # GPT models
+        "gpt-4o-mini": "openai/gpt-4o-mini",
+        "gpt-4o": "openai/gpt-4o",
+        "gpt-4": "openai/gpt-4-turbo",
+        "gpt-3.5-turbo": "openai/gpt-3.5-turbo",
+        # Gemini models
+        "gemini-flash": "google/gemini-flash-1.5",
+        "gemini-pro": "google/gemini-pro-1.5",
+    }
+    
     # Official pricing (USD per 1M tokens): (input, cached_input, output)
     PRICING = {
         # OpenAI GPT-5 series
@@ -71,6 +91,29 @@ class LLMClient:
         if url.endswith('/chat/completions'):
             url = url[:-len('/chat/completions')]
         self.base_url = url
+        
+        # Auto-convert model names for OpenRouter
+        if 'openrouter.ai' in self.base_url.lower():
+            # If model name doesn't contain '/', it needs provider prefix
+            if '/' not in self.model:
+                # Try to find in mapping table first
+                if self.model in self.OPENROUTER_MODEL_MAP:
+                    original = self.model
+                    self.model = self.OPENROUTER_MODEL_MAP[self.model]
+                    print(f"[LLM] Converted model '{original}' -> '{self.model}' for OpenRouter")
+                else:
+                    # Auto-detect provider from model name
+                    original = self.model
+                    if 'qwen' in self.model.lower():
+                        self.model = f"qwen/{self.model}"
+                    elif 'claude' in self.model.lower():
+                        self.model = f"anthropic/{self.model}"
+                    elif 'gpt' in self.model.lower() or self.model.startswith('o'):
+                        self.model = f"openai/{self.model}"
+                    elif 'gemini' in self.model.lower():
+                        self.model = f"google/{self.model}"
+                    print(f"[LLM] Auto-prefixed model '{original}' -> '{self.model}' for OpenRouter")
+        
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.reasoning_effort = reasoning_effort
