@@ -1,5 +1,6 @@
 """LLM client for ARAG - unified interface for OpenAI-compatible APIs."""
 
+import json
 import os
 from typing import Any, Dict, List, Optional
 
@@ -148,11 +149,22 @@ class LLMClient:
         if tools:
             payload["tools"] = tools
             payload["tool_choice"] = "auto"
+        # Only add reasoning_effort if it's set and not None
         if self.reasoning_effort:
             payload["reasoning_effort"] = self.reasoning_effort
         
         response = requests.post(url, headers=headers, json=payload, timeout=300)
-        response.raise_for_status()
+        if not response.ok:
+            error_detail = response.text
+            try:
+                error_json = response.json()
+                error_detail = json.dumps(error_json, indent=2)
+            except:
+                pass
+            raise requests.exceptions.HTTPError(
+                f"{response.status_code} Error for {url}\nResponse: {error_detail}",
+                response=response
+            )
         result = response.json()
         
         usage = result.get("usage", {})
