@@ -65,7 +65,11 @@ class LLMClient:
     ):
         self.model = model or os.getenv("ARAG_MODEL", "gpt-4o-mini")
         self.api_key = api_key or os.getenv("ARAG_API_KEY")
-        self.base_url = (base_url or os.getenv("ARAG_BASE_URL", "https://api.openai.com/v1")).rstrip('/')
+        # Clean up base_url: remove trailing slash and /chat/completions if present
+        url = (base_url or os.getenv("ARAG_BASE_URL", "https://api.openai.com/v1")).rstrip('/')
+        if url.endswith('/chat/completions'):
+            url = url[:-len('/chat/completions')]
+        self.base_url = url
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.reasoning_effort = reasoning_effort
